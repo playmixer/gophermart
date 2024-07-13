@@ -1,6 +1,7 @@
 package config
 
 import (
+	"flag"
 	"fmt"
 
 	"github.com/caarlos0/env/v11"
@@ -29,6 +30,12 @@ func Init() (Config, error) {
 			GorutineEnabled: true,
 		},
 	}
+
+	flag.StringVar(&cfg.Rest.Address, "a", "localhost:8080", "address listen")
+	flag.StringVar(&cfg.Store.Database.DSN, "d", "", "database dsn")
+	flag.StringVar(&cfg.Gophermart.AccrualAddress, "r", "", "address accrual system")
+	flag.Parse()
+
 	_ = godotenv.Load(".env")
 	if err := env.Parse(&cfg); err != nil {
 		return cfg, fmt.Errorf("failed parse env: %w", err)
