@@ -18,6 +18,21 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+var cfg *config.Config
+
+func initConfig(t *testing.T) {
+	t.Helper()
+
+	if cfg != nil {
+		return
+	}
+	var err error
+	cfg, err = config.Init()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestServer_handlerRegister(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
@@ -51,11 +66,9 @@ func TestServer_handlerRegister(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cfg, err := config.Init()
-			assert.NoError(t, err)
+			initConfig(t)
 			cfg.Gophermart.GorutineEnabled = false
 
-			assert.NoError(t, err)
 			storeMock := store.NewMockStore(ctrl)
 
 			if tt.status != http.StatusBadRequest {
@@ -69,9 +82,16 @@ func TestServer_handlerRegister(t *testing.T) {
 						RegisterUser(ctx, gomock.Any(), gomock.Any()).
 						Return(nil).
 						Times(1)
+					hashPass, err := gophermart.HashPassword(tt.password)
+					assert.NoError(t, err)
+					storeMock.EXPECT().
+						GetUserByLogin(ctx, tt.login).
+						Return(model.User{
+							PasswordHash: hashPass,
+						}, nil).
+						Times(1)
 				}
 			}
-			assert.NoError(t, err)
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)
@@ -126,11 +146,9 @@ func TestServer_handlerLogin(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cfg, err := config.Init()
-			assert.NoError(t, err)
+			initConfig(t)
 			cfg.Gophermart.GorutineEnabled = false
 
-			assert.NoError(t, err)
 			storeMock := store.NewMockStore(ctrl)
 			hashPass, err := gophermart.HashPassword(tt.password)
 			assert.NoError(t, err)
@@ -230,11 +248,9 @@ func TestServer_handlerLoadUserOrders(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cfg, err := config.Init()
-			assert.NoError(t, err)
+			initConfig(t)
 			cfg.Gophermart.GorutineEnabled = false
 
-			assert.NoError(t, err)
 			storeMock := store.NewMockStore(ctrl)
 			if !(tt.errstore == nil) || tt.name == "apply" {
 				storeMock.EXPECT().
@@ -243,7 +259,6 @@ func TestServer_handlerLoadUserOrders(t *testing.T) {
 					Times(1)
 			}
 
-			assert.NoError(t, err)
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)
@@ -312,11 +327,9 @@ func TestServer_handlerGetUserOrders(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cfg, err := config.Init()
-			assert.NoError(t, err)
+			initConfig(t)
 			cfg.Gophermart.GorutineEnabled = false
 
-			assert.NoError(t, err)
 			storeMock := store.NewMockStore(ctrl)
 			if tt.errstore != nil || tt.name == "ok" {
 				storeMock.EXPECT().
@@ -325,7 +338,6 @@ func TestServer_handlerGetUserOrders(t *testing.T) {
 					Times(1)
 			}
 
-			assert.NoError(t, err)
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)
@@ -385,11 +397,9 @@ func TestServer_handlerGetUserBalance(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cfg, err := config.Init()
-			assert.NoError(t, err)
+			initConfig(t)
 			cfg.Gophermart.GorutineEnabled = false
 
-			assert.NoError(t, err)
 			storeMock := store.NewMockStore(ctrl)
 			if tt.name == "ok" {
 				storeMock.EXPECT().
@@ -398,7 +408,6 @@ func TestServer_handlerGetUserBalance(t *testing.T) {
 					Times(1)
 			}
 
-			assert.NoError(t, err)
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)
@@ -473,11 +482,9 @@ func TestServer_handlerUserBalanceWithdraw(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cfg, err := config.Init()
-			assert.NoError(t, err)
+			initConfig(t)
 			cfg.Gophermart.GorutineEnabled = false
 
-			assert.NoError(t, err)
 			storeMock := store.NewMockStore(ctrl)
 			if tt.name == "ok" || tt.name == "no money" {
 				storeMock.EXPECT().
@@ -486,7 +493,6 @@ func TestServer_handlerUserBalanceWithdraw(t *testing.T) {
 					Times(1)
 			}
 
-			assert.NoError(t, err)
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)
@@ -551,11 +557,9 @@ func TestServer_handlerUserWithdrawals(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cfg, err := config.Init()
-			assert.NoError(t, err)
+			initConfig(t)
 			cfg.Gophermart.GorutineEnabled = false
 
-			assert.NoError(t, err)
 			storeMock := store.NewMockStore(ctrl)
 			if tt.name != "unauthorize" {
 				storeMock.EXPECT().
@@ -570,7 +574,6 @@ func TestServer_handlerUserWithdrawals(t *testing.T) {
 				}
 			}
 
-			assert.NoError(t, err)
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)

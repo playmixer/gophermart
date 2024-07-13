@@ -179,3 +179,27 @@ func unauthorize(c *gin.Context) {
 	c.Request.AddCookie(userCookie)
 	http.SetCookie(c.Writer, userCookie)
 }
+
+func (s *Server) authorization(c *gin.Context, login, password string) error {
+	ctx := c.Request.Context()
+	var err error
+	var user model.User
+	if user, err = s.service.Authorization(ctx, login, password); err != nil {
+		return fmt.Errorf("failed authorization: %w", err)
+	}
+
+	signedCookie, err := s.CreateJWT(user.ID)
+	if err != nil {
+		return fmt.Errorf("can't create cookie data: %w", err)
+	}
+
+	userCookie := &http.Cookie{
+		Name:  cookieName,
+		Value: signedCookie,
+		Path:  "/",
+	}
+	c.Request.AddCookie(userCookie)
+	http.SetCookie(c.Writer, userCookie)
+
+	return nil
+}

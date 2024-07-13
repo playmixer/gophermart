@@ -74,6 +74,19 @@ func (s *Server) handlerRegister(c *gin.Context) {
 		return
 	}
 
+	if err = s.authorization(c, jBody.Login, jBody.Password); err != nil {
+		if errors.Is(err, gophermart.ErrLoginNotValid) || errors.Is(err, gophermart.ErrPasswordNotValid) {
+			c.Writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, gophermart.ErrPasswordNotEquale) || errors.Is(err, errstore.ErrNotFoundData) {
+			c.Writer.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		s.log.Error("authorization failed", zap.Error(err))
+		c.Writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	c.Writer.WriteHeader(http.StatusOK)
 }
 
@@ -90,8 +103,6 @@ func (s *Server) handlerRegister(c *gin.Context) {
 //	@failure		500		"внутренняя ошибка сервера"
 //	@Router			/api/user/login [post]
 func (s *Server) handlerLogin(c *gin.Context) {
-	ctx := c.Request.Context()
-
 	unauthorize(c)
 
 	bBody, err := io.ReadAll(c.Request.Body)
@@ -115,8 +126,7 @@ func (s *Server) handlerLogin(c *gin.Context) {
 		return
 	}
 
-	var user model.User
-	if user, err = s.service.Authorization(ctx, jBody.Login, jBody.Password); err != nil {
+	if err = s.authorization(c, jBody.Login, jBody.Password); err != nil {
 		if errors.Is(err, gophermart.ErrLoginNotValid) || errors.Is(err, gophermart.ErrPasswordNotValid) {
 			c.Writer.WriteHeader(http.StatusBadRequest)
 			return
@@ -129,21 +139,6 @@ func (s *Server) handlerLogin(c *gin.Context) {
 		c.Writer.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	signedCookie, err := s.CreateJWT(user.ID)
-	if err != nil {
-		s.log.Error("can't create cookie data", zap.Error(err))
-		c.Writer.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	userCookie := &http.Cookie{
-		Name:  cookieName,
-		Value: signedCookie,
-		Path:  "/",
-	}
-	c.Request.AddCookie(userCookie)
-	http.SetCookie(c.Writer, userCookie)
 	c.Writer.WriteHeader(http.StatusOK)
 }
 

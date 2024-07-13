@@ -20,8 +20,8 @@ type Config struct {
 	LogLevel   string `env:"LOG_LEVEL" envDefault:"info"`
 }
 
-func Init() (Config, error) {
-	cfg := Config{
+func Init() (*Config, error) {
+	cfg := &Config{
 		Rest: &rest.Config{},
 		Store: &store.Config{
 			Database: &database.Config{},
@@ -37,7 +37,7 @@ func Init() (Config, error) {
 	flag.Parse()
 
 	_ = godotenv.Load(".env")
-	if err := env.Parse(&cfg); err != nil {
+	if err := env.Parse(cfg); err != nil {
 		return cfg, fmt.Errorf("failed parse env: %w", err)
 	}
 
