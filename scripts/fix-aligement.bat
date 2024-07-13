@@ -1,0 +1,1 @@
+fieldalignment -fix %1

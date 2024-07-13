@@ -21,3 +21,9 @@ vendor/
 # IDEs directories
 .idea
 .vscode
+
+golangci-lint
+.env
+
+# Logs
+logs/*

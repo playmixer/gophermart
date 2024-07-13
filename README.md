@@ -1,3 +1,21 @@
+# Gophermart - Накопительная система лояльности «Гофермарт»
+## Запуск проект локально
+
+### Клонировать проект
+```bash
+mkdir myproject && cd myproject
+git clone https://github.com/playmixer/gophermart.git .
+```
+### Запустить контейнеры
+```bash
+cd deploy
+docker-compose up
+```
+После запуска для тестирования перейти на
+http://localhost:8080/swagger/index.html
+
+
+#
 # go-musthave-diploma-tpl
 
 Шаблон репозитория для индивидуального дипломного проекта курса «Go-разработчик»

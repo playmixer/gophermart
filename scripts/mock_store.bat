@@ -1,0 +1,1 @@
+mockgen -source=F:\Projects\Go\src\gophermart\internal\adapters\store\store.go -package=store > .\internal\mocks\store\store.go
