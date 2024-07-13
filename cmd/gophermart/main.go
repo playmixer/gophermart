@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/playmixer/gophermart/internal/adapters/api/rest"
 	"github.com/playmixer/gophermart/internal/adapters/logger"
@@ -13,7 +15,7 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
@@ -27,7 +29,7 @@ func run() error {
 		return fmt.Errorf("failed initilize config: %w", err)
 	}
 
-	lgr, err := logger.New(cfg.LogLevel, logger.OutputPath("./logs/log.txt"))
+	lgr, err := logger.New(cfg.LogLevel, logger.OutputPath(cfg.LogPath))
 	if err != nil {
 		return fmt.Errorf("failed initialize logger: %w", err)
 	}

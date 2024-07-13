@@ -10,7 +10,9 @@ type option func(*zap.Config)
 
 func OutputPath(path string) option {
 	return func(c *zap.Config) {
-		// _ = os.Mkdir(path, os.ModePerm)
+		if path == "" {
+			return
+		}
 		c.OutputPaths = append(c.OutputPaths, path)
 	}
 }

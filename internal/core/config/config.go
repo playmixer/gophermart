@@ -18,6 +18,7 @@ type Config struct {
 	Gophermart *gophermart.Config
 	Secret     string `env:"SECRET_KEY" envDefault:"secret_key"`
 	LogLevel   string `env:"LOG_LEVEL" envDefault:"info"`
+	LogPath    string `env:"LOG_PATH"`
 }
 
 func Init() (*Config, error) {
