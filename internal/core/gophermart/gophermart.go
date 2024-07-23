@@ -39,9 +39,9 @@ type Config struct {
 type Gophermart struct {
 	log    *zap.Logger
 	cfg    *Config
+	wg     *sync.WaitGroup
 	store  Store
 	secret string
-	wg     *sync.WaitGroup
 }
 
 type option func(*Gophermart)
