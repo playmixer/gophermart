@@ -281,6 +281,7 @@ func (s *Server) handlerGetUserBalance(c *gin.Context) {
 				Current:   0,
 				Withdrawn: 0,
 			})
+			return
 		}
 		c.Writer.WriteHeader(http.StatusInternalServerError)
 		return

@@ -61,8 +61,6 @@ func New(service Gophermart, options ...Option) (*Server, error) {
 	s := &Server{
 		log:     zap.NewNop(),
 		service: service,
-		secret:  []byte("default_secret_key"),
-		address: ":8080",
 	}
 
 	for _, opt := range options {
@@ -105,7 +103,7 @@ func (s *Server) CreateEngine() *gin.Engine {
 func (s *Server) Run() error {
 	r := s.CreateEngine()
 	if err := r.Run(s.address); err != nil {
-		return fmt.Errorf("server stoped with error: %w", err)
+		return fmt.Errorf("server stopped with error: %w", err)
 	}
 
 	return nil

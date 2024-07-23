@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
@@ -27,20 +29,21 @@ func Init() (*Config, error) {
 		Store: &store.Config{
 			Database: &database.Config{},
 		},
-		Gophermart: &gophermart.Config{
-			GorutineEnabled: true,
-		},
+		Gophermart: &gophermart.Config{},
 	}
 
-	flag.StringVar(&cfg.Rest.Address, "a", "localhost:8080", "address listen")
-	flag.StringVar(&cfg.Store.Database.DSN, "d", "", "database dsn")
-	flag.StringVar(&cfg.Gophermart.AccrualAddress, "r", "", "address accrual system")
-	flag.Parse()
+	if err := godotenv.Load(".env"); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return cfg, fmt.Errorf("failed load enviorements from file: %w", err)
+	}
 
-	_ = godotenv.Load(".env")
 	if err := env.Parse(cfg); err != nil {
 		return cfg, fmt.Errorf("failed parse env: %w", err)
 	}
+
+	flag.StringVar(&cfg.Rest.Address, "a", cfg.Rest.Address, "address listen")
+	flag.StringVar(&cfg.Store.Database.DSN, "d", cfg.Store.Database.DSN, "database dsn")
+	flag.StringVar(&cfg.Gophermart.AccrualAddress, "r", cfg.Gophermart.AccrualAddress, "address accrual system")
+	flag.Parse()
 
 	return cfg, nil
 }
