@@ -15,6 +15,14 @@ docker-compose up
 http://localhost:8080/swagger/index.html
 
 
+
+# Генерация swagger документации
+выполнить из корня проекта команду:
+```sh
+swag init -o ./docs -g ./internal/adapters/api/rest/rest.go
+```
+подробнее в https://github.com/swaggo/swag
+
 #
 # go-musthave-diploma-tpl
 
