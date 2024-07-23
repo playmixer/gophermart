@@ -7,18 +7,19 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY cmd/gophermart/main.go ./
+COPY cmd/gophermart/ ./cmd/gophermart/
 COPY docs ./docs
 COPY internal ./internal
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/gophermart
+WORKDIR /app/cmd/gophermart
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/cmd/gophermart
 
 FROM ubuntu:latest
 
 WORKDIR /app
 
-COPY --from=build /app/gophermart /gophermart
+COPY --from=build /app/cmd/gophermart/gophermart /gophermart
 
 EXPOSE 8080
 
