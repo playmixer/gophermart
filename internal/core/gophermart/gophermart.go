@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/playmixer/gophermart/internal/adapters/store/model"
@@ -31,8 +32,8 @@ var (
 )
 
 type Config struct {
-	AccrualAddress  string `env:"ACCRUAL_SYSTEM_ADDRESS"`
-	GorutineEnabled bool
+	AccrualAddress  string `env:"ACCRUAL_SYSTEM_ADDRESS" envDefault:"localhost:8081"`
+	GorutineEnabled bool   `env:"GOROUTINE_ENABLED" envDefault:"true"`
 }
 
 type Gophermart struct {
@@ -40,6 +41,7 @@ type Gophermart struct {
 	cfg    *Config
 	store  Store
 	secret string
+	wg     *sync.WaitGroup
 }
 
 type option func(*Gophermart)
@@ -60,6 +62,7 @@ func New(ctx context.Context, cfg *Config, store Store, options ...option) *Goph
 	g := &Gophermart{
 		store: store,
 		cfg:   cfg,
+		wg:    &sync.WaitGroup{},
 	}
 
 	for _, opt := range options {
@@ -68,8 +71,10 @@ func New(ctx context.Context, cfg *Config, store Store, options ...option) *Goph
 
 	if g.cfg.GorutineEnabled {
 		semaphore := NewSemaphore()
+		g.wg.Add(1)
 		outputCh := g.generatorUpdAccrual(ctx)
 		for i := range workerCount {
+			g.wg.Add(1)
 			go g.workerUpdOrders(ctx, i, outputCh, semaphore)
 		}
 	}
@@ -201,12 +206,15 @@ func checkLuhn(ccn string) bool {
 func (g *Gophermart) generatorUpdAccrual(ctx context.Context) <-chan *model.Order {
 	outpuCh := make(chan *model.Order)
 	go func() {
+		g.log.Debug("start gorutin generatorUpdAccrual")
+		defer g.log.Debug("stopped gorutin generatorUpdAccrual")
+		defer g.wg.Done()
 		tick := time.NewTicker(delayUpdAccrual)
 		defer close(outpuCh)
 		for {
 			select {
 			case <-ctx.Done():
-				g.log.Info("generator update accrual stoped")
+				g.log.Debug("generator update accrual stopping")
 				return
 			case <-tick.C:
 				orders, err := g.store.GetOrdersNotPrecessed(ctx)
@@ -224,10 +232,13 @@ func (g *Gophermart) generatorUpdAccrual(ctx context.Context) <-chan *model.Orde
 }
 
 func (g *Gophermart) workerUpdOrders(ctx context.Context, id int, inputCh <-chan *model.Order, semaphore *semaphore) {
+	g.log.Debug("start gorutin workerUpdOrders", zap.Int("id", id))
+	defer g.log.Debug("stopped gorutin workerUpdOrders", zap.Int("id", id))
+	defer g.wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
-			g.log.Info("worker updating order stoped", zap.Int("worker_id", id))
+			g.log.Info("worker updating order stopping", zap.Int("id", id))
 			return
 		case o := <-inputCh:
 			semaphore.Wait()
@@ -282,4 +293,8 @@ func (g *Gophermart) workerUpdOrders(ctx context.Context, id int, inputCh <-chan
 			}()
 		}
 	}
+}
+
+func (g *Gophermart) Wait() {
+	g.wg.Wait()
 }

@@ -6,16 +6,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/playmixer/gophermart/internal/adapters/api/rest"
 	"github.com/playmixer/gophermart/internal/adapters/logger"
 	"github.com/playmixer/gophermart/internal/adapters/store"
 	"github.com/playmixer/gophermart/internal/core/config"
 	"github.com/playmixer/gophermart/internal/core/gophermart"
+	"go.uber.org/zap"
 )
 
 func main() {
-	if err := run(); !errors.Is(err, http.ErrServerClosed) {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -50,9 +54,22 @@ func run() error {
 		return fmt.Errorf("failed initialize rest server: %w", err)
 	}
 
-	err = server.Run()
-	if err != nil {
-		return fmt.Errorf("stop server, %w", err)
-	}
+	exit := make(chan os.Signal, 1)
+	signal.Notify(exit, os.Interrupt, syscall.SIGTERM)
+
+	lgr.Info("Starting")
+	go func() {
+		defer close(exit)
+		if err := server.Run(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			lgr.Error("failed run server", zap.Error(err))
+		}
+	}()
+
+	<-exit
+	lgr.Info("Stopping...")
+	cancel()
+	mart.Wait()
+	lgr.Info("Service stopped")
+
 	return nil
 }
