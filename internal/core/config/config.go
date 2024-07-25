@@ -40,10 +40,16 @@ func Init() (*Config, error) {
 		return cfg, fmt.Errorf("failed parse env: %w", err)
 	}
 
-	flag.StringVar(&cfg.Rest.Address, "a", cfg.Rest.Address, "address listen")
-	flag.StringVar(&cfg.Store.Database.DSN, "d", cfg.Store.Database.DSN, "database dsn")
-	flag.StringVar(&cfg.Gophermart.AccrualAddress, "r", cfg.Gophermart.AccrualAddress, "address accrual system")
+	regStringFlag(&cfg.Rest.Address, "a", cfg.Rest.Address, "address listen")
+	regStringFlag(&cfg.Store.Database.DSN, "d", cfg.Store.Database.DSN, "database dsn")
+	regStringFlag(&cfg.Gophermart.AccrualAddress, "r", cfg.Gophermart.AccrualAddress, "address accrual system")
 	flag.Parse()
 
 	return cfg, nil
+}
+
+func regStringFlag(p *string, name string, value string, usage string) {
+	if flag.Lookup(name) == nil {
+		flag.StringVar(p, name, value, usage)
+	}
 }

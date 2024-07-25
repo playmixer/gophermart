@@ -48,7 +48,8 @@ func run() error {
 	server, err := rest.New(
 		mart,
 		rest.Logger(lgr),
-		rest.Configure(cfg.Rest),
+		rest.SetAddress(cfg.Rest.Address),
+		rest.SetSecretKey([]byte(cfg.Rest.Secret)),
 	)
 	if err != nil {
 		return fmt.Errorf("failed initialize rest server: %w", err)

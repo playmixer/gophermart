@@ -33,14 +33,14 @@ func checkPasswordHash(password, hash string) bool {
 }
 
 type semaphore struct {
-	locked *atomic.Bool
+	lockedTime *atomic.Int64
 }
 
 func NewSemaphore() *semaphore {
 	s := &semaphore{
-		locked: &atomic.Bool{},
+		lockedTime: &atomic.Int64{},
 	}
-	s.locked.Store(false)
+	s.lockedTime.Store(time.Now().UnixNano())
 
 	return s
 }
@@ -48,7 +48,7 @@ func NewSemaphore() *semaphore {
 func (s *semaphore) Wait() {
 	var delay int64 = 100
 	for {
-		if !s.locked.Load() {
+		if s.lockedTime.Load() < time.Now().UnixNano() {
 			return
 		}
 		time.Sleep(time.Millisecond * time.Duration(delay))
@@ -56,11 +56,5 @@ func (s *semaphore) Wait() {
 }
 
 func (s *semaphore) Lock(d time.Duration) {
-	s.locked.Store(true)
-	go s.unlock(d)
-}
-
-func (s *semaphore) unlock(d time.Duration) {
-	time.Sleep(d)
-	s.locked.Store(false)
+	s.lockedTime.Store(time.Now().Add(d).UnixNano())
 }

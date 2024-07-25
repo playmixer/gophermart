@@ -281,7 +281,15 @@ func (g *Gophermart) workerUpdOrders(ctx context.Context, id int, inputCh <-chan
 						zap.String("status", resp.Status),
 						zap.String("Retry-After", sRetryAfter),
 					)
-					iRetryAfter, _ := strconv.Atoi(sRetryAfter)
+					iRetryAfter, err := strconv.Atoi(sRetryAfter)
+					if err != nil {
+						g.log.Error("failed convert RetryAfter to int", zap.Error(err))
+						return
+					}
+					if iRetryAfter <= 0 {
+						g.log.Error("`RetryAfter` not valid as seconds", zap.Int("seconds", iRetryAfter))
+						return
+					}
 					semaphore.Lock(time.Second * time.Duration(iRetryAfter))
 					return
 				}

@@ -3,7 +3,6 @@ package rest
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"sort"
 
@@ -35,21 +34,15 @@ func (s *Server) handlerRegister(c *gin.Context) {
 
 	unauthorize(c)
 
-	bBody, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		s.log.Error("failed read body", zap.Error(err))
-		c.Writer.WriteHeader(http.StatusInternalServerError)
+	bBody, statusCode := s.readBody(c)
+	if statusCode > 0 {
+		c.Writer.WriteHeader(statusCode)
 		return
 	}
-	defer func() {
-		if err := c.Request.Body.Close(); err != nil {
-			s.log.Error(msgErrorCloseBody, zap.Error(err))
-		}
-	}()
 
 	jBody := tRegistration{}
 
-	err = json.Unmarshal(bBody, &jBody)
+	err := json.Unmarshal(bBody, &jBody)
 	if err != nil {
 		s.log.Error("failed parse body", zap.Error(err))
 		c.Writer.WriteHeader(http.StatusInternalServerError)
@@ -61,33 +54,33 @@ func (s *Server) handlerRegister(c *gin.Context) {
 			c.Writer.WriteHeader(http.StatusConflict)
 			return
 		}
-		if errors.Is(err, gophermart.ErrLoginNotValid) || errors.Is(err, gophermart.ErrPasswordNotValid) {
-			c.Writer.WriteHeader(http.StatusBadRequest)
+		if errors.Is(err, gophermart.ErrLoginNotValid) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "Не верный формат логина",
+			})
+			return
+		}
+		if errors.Is(err, gophermart.ErrPasswordNotValid) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "Не верный формат пароля",
+			})
 			return
 		}
 
 		s.log.Error("failed register user", zap.Error(err))
-		// c.Writer.WriteHeader(http.StatusInternalServerError)
-		c.JSON(http.StatusOK, gin.H{
-			"error": err.Error(),
+		c.Writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	statusCode, message := s.login(c, jBody.Login, jBody.Password)
+	if message != "" {
+		c.JSON(statusCode, gin.H{
+			"message": message,
 		})
 		return
 	}
 
-	if err = s.authorization(c, jBody.Login, jBody.Password); err != nil {
-		if errors.Is(err, gophermart.ErrLoginNotValid) || errors.Is(err, gophermart.ErrPasswordNotValid) {
-			c.Writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, gophermart.ErrPasswordNotEquale) || errors.Is(err, errstore.ErrNotFoundData) {
-			c.Writer.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		s.log.Error("authorization failed", zap.Error(err))
-		c.Writer.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.WriteHeader(statusCode)
 }
 
 //	@Summary	Login user
@@ -105,41 +98,30 @@ func (s *Server) handlerRegister(c *gin.Context) {
 func (s *Server) handlerLogin(c *gin.Context) {
 	unauthorize(c)
 
-	bBody, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		s.log.Error("failed read body", zap.Error(err))
-		c.Writer.WriteHeader(http.StatusInternalServerError)
+	bBody, statusCode := s.readBody(c)
+	if statusCode > 0 {
+		c.Writer.WriteHeader(statusCode)
 		return
 	}
-	defer func() {
-		if err := c.Request.Body.Close(); err != nil {
-			s.log.Error(msgErrorCloseBody, zap.Error(err))
-		}
-	}()
 
 	jBody := tAuthorization{}
 
-	err = json.Unmarshal(bBody, &jBody)
+	err := json.Unmarshal(bBody, &jBody)
 	if err != nil {
 		s.log.Error("failed parse body", zap.Error(err))
 		c.Writer.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	if err = s.authorization(c, jBody.Login, jBody.Password); err != nil {
-		if errors.Is(err, gophermart.ErrLoginNotValid) || errors.Is(err, gophermart.ErrPasswordNotValid) {
-			c.Writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, gophermart.ErrPasswordNotEquale) || errors.Is(err, errstore.ErrNotFoundData) {
-			c.Writer.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		s.log.Error("authorization failed", zap.Error(err))
-		c.Writer.WriteHeader(http.StatusInternalServerError)
+	statusCode, message := s.login(c, jBody.Login, jBody.Password)
+	if message != "" {
+		c.JSON(statusCode, gin.H{
+			"message": message,
+		})
 		return
 	}
-	c.Writer.WriteHeader(http.StatusOK)
+
+	c.Writer.WriteHeader(statusCode)
 }
 
 //	@Summary	upload user order
@@ -165,16 +147,11 @@ func (s *Server) handlerLoadUserOrders(c *gin.Context) {
 		return
 	}
 
-	bBody, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.Writer.WriteHeader(http.StatusInternalServerError)
+	bBody, statusCode := s.readBody(c)
+	if statusCode > 0 {
+		c.Writer.WriteHeader(statusCode)
 		return
 	}
-	defer func() {
-		if err := c.Request.Body.Close(); err != nil {
-			s.log.Error(msgErrorCloseBody, zap.Error(err))
-		}
-	}()
 
 	orderNumber := string(bBody)
 	if orderNumber == "" {
@@ -313,17 +290,11 @@ func (s *Server) handlerUserBalanceWithdraw(c *gin.Context) {
 		return
 	}
 
-	bBody, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		s.log.Error("failed read body", zap.Error(err))
-		c.Writer.WriteHeader(http.StatusInternalServerError)
+	bBody, statusCode := s.readBody(c)
+	if statusCode > 0 {
+		c.Writer.WriteHeader(statusCode)
 		return
 	}
-	defer func() {
-		if err := c.Request.Body.Close(); err != nil {
-			s.log.Error(msgErrorCloseBody, zap.Error(err))
-		}
-	}()
 
 	withdraw := tWithdraw{}
 	err = json.Unmarshal(bBody, &withdraw)

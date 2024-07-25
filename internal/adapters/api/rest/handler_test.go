@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,24 +15,14 @@ import (
 	"github.com/playmixer/gophermart/internal/core/config"
 	"github.com/playmixer/gophermart/internal/core/gophermart"
 	"github.com/playmixer/gophermart/internal/mocks/store"
+	"github.com/playmixer/gophermart/pkg/jwt"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
 
-var cfg *config.Config
-
-func initConfig(t *testing.T) {
-	t.Helper()
-
-	if cfg != nil {
-		return
-	}
-	var err error
-	cfg, err = config.Init()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
+var (
+	cookieKey = "UserID"
+)
 
 func TestServer_handlerRegister(t *testing.T) {
 	ctx := context.Background()
@@ -66,7 +57,8 @@ func TestServer_handlerRegister(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initConfig(t)
+			cfg, err := config.Init()
+			assert.NoError(t, err)
 			cfg.Gophermart.GorutineEnabled = false
 
 			storeMock := store.NewMockStore(ctrl)
@@ -95,7 +87,7 @@ func TestServer_handlerRegister(t *testing.T) {
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)
-			engin := server.CreateEngine()
+			engin := server.Engine()
 
 			w := httptest.NewRecorder()
 			body := strings.NewReader(fmt.Sprintf(`{"login":%q, "password":%q}`, tt.login, tt.password))
@@ -146,7 +138,8 @@ func TestServer_handlerLogin(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initConfig(t)
+			cfg, err := config.Init()
+			assert.NoError(t, err)
 			cfg.Gophermart.GorutineEnabled = false
 
 			storeMock := store.NewMockStore(ctrl)
@@ -174,7 +167,7 @@ func TestServer_handlerLogin(t *testing.T) {
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
 			server, err := rest.New(mart)
 			assert.NoError(t, err)
-			engin := server.CreateEngine()
+			engin := server.Engine()
 
 			w := httptest.NewRecorder()
 			body := strings.NewReader(fmt.Sprintf(`{"login":%q, "password":%q}`, tt.login, tt.password))
@@ -248,7 +241,8 @@ func TestServer_handlerLoadUserOrders(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initConfig(t)
+			cfg, err := config.Init()
+			assert.NoError(t, err)
 			cfg.Gophermart.GorutineEnabled = false
 
 			storeMock := store.NewMockStore(ctrl)
@@ -260,16 +254,16 @@ func TestServer_handlerLoadUserOrders(t *testing.T) {
 			}
 
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
-			server, err := rest.New(mart)
+			server, err := rest.New(mart, rest.SetSecretKey([]byte(cfg.Rest.Secret)))
 			assert.NoError(t, err)
-			engin := server.CreateEngine()
+			engin := server.Engine()
 
 			w := httptest.NewRecorder()
 			body := strings.NewReader(tt.order)
 			r := httptest.NewRequest(http.MethodPost, "/api/user/orders", body)
-
+			jwtRest := jwt.New([]byte(cfg.Rest.Secret))
 			if tt.status != http.StatusUnauthorized {
-				signedCookie, err := server.CreateJWT(tt.userID)
+				signedCookie, err := jwtRest.Create(cookieKey, strconv.Itoa(int(tt.userID)))
 				assert.NoError(t, err)
 				userCookie := &http.Cookie{
 					Name:  "token",
@@ -305,7 +299,7 @@ func TestServer_handlerGetUserOrders(t *testing.T) {
 			name:   "ok",
 			userID: 1,
 			orders: []*model.Order{
-				{ID: 1, Number: "123", UserID: 1},
+				{ID: 1, Number: "9278923470", UserID: 1},
 			},
 			status: http.StatusOK,
 		},
@@ -327,7 +321,8 @@ func TestServer_handlerGetUserOrders(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initConfig(t)
+			cfg, err := config.Init()
+			assert.NoError(t, err)
 			cfg.Gophermart.GorutineEnabled = false
 
 			storeMock := store.NewMockStore(ctrl)
@@ -339,15 +334,16 @@ func TestServer_handlerGetUserOrders(t *testing.T) {
 			}
 
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
-			server, err := rest.New(mart)
+			server, err := rest.New(mart, rest.SetSecretKey([]byte(cfg.Rest.Secret)))
 			assert.NoError(t, err)
-			engin := server.CreateEngine()
+			engin := server.Engine()
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, "/api/user/orders", http.NoBody)
 
+			jwtRest := jwt.New([]byte(cfg.Rest.Secret))
 			if tt.status != http.StatusUnauthorized {
-				signedCookie, err := server.CreateJWT(tt.userID)
+				signedCookie, err := jwtRest.Create(cookieKey, strconv.Itoa(int(tt.userID)))
 				assert.NoError(t, err)
 				userCookie := &http.Cookie{
 					Name:  "token",
@@ -397,7 +393,8 @@ func TestServer_handlerGetUserBalance(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initConfig(t)
+			cfg, err := config.Init()
+			assert.NoError(t, err)
 			cfg.Gophermart.GorutineEnabled = false
 
 			storeMock := store.NewMockStore(ctrl)
@@ -409,15 +406,16 @@ func TestServer_handlerGetUserBalance(t *testing.T) {
 			}
 
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
-			server, err := rest.New(mart)
+			server, err := rest.New(mart, rest.SetSecretKey([]byte(cfg.Rest.Secret)))
 			assert.NoError(t, err)
-			engin := server.CreateEngine()
+			engin := server.Engine()
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, "/api/user/balance", http.NoBody)
 
+			jwtRest := jwt.New([]byte(cfg.Rest.Secret))
 			if tt.status != http.StatusUnauthorized {
-				signedCookie, err := server.CreateJWT(tt.userID)
+				signedCookie, err := jwtRest.Create(cookieKey, strconv.Itoa(int(tt.userID)))
 				assert.NoError(t, err)
 				userCookie := &http.Cookie{
 					Name:  "token",
@@ -482,7 +480,8 @@ func TestServer_handlerUserBalanceWithdraw(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initConfig(t)
+			cfg, err := config.Init()
+			assert.NoError(t, err)
 			cfg.Gophermart.GorutineEnabled = false
 
 			storeMock := store.NewMockStore(ctrl)
@@ -494,16 +493,17 @@ func TestServer_handlerUserBalanceWithdraw(t *testing.T) {
 			}
 
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
-			server, err := rest.New(mart)
+			server, err := rest.New(mart, rest.SetSecretKey([]byte(cfg.Rest.Secret)))
 			assert.NoError(t, err)
-			engin := server.CreateEngine()
+			engin := server.Engine()
 
 			w := httptest.NewRecorder()
 			body := strings.NewReader(fmt.Sprintf(`{"order":%q, "sum":%d}`, tt.order, 1))
 			r := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", body)
 
+			jwtRest := jwt.New([]byte(cfg.Rest.Secret))
 			if tt.status != http.StatusUnauthorized {
-				signedCookie, err := server.CreateJWT(tt.userID)
+				signedCookie, err := jwtRest.Create(cookieKey, strconv.Itoa(int(tt.userID)))
 				assert.NoError(t, err)
 				userCookie := &http.Cookie{
 					Name:  "token",
@@ -557,7 +557,8 @@ func TestServer_handlerUserWithdrawals(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initConfig(t)
+			cfg, err := config.Init()
+			assert.NoError(t, err)
 			cfg.Gophermart.GorutineEnabled = false
 
 			storeMock := store.NewMockStore(ctrl)
@@ -575,15 +576,16 @@ func TestServer_handlerUserWithdrawals(t *testing.T) {
 			}
 
 			mart := gophermart.New(ctx, cfg.Gophermart, storeMock)
-			server, err := rest.New(mart)
+			server, err := rest.New(mart, rest.SetSecretKey([]byte(cfg.Rest.Secret)))
 			assert.NoError(t, err)
-			engin := server.CreateEngine()
+			engin := server.Engine()
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", http.NoBody)
 
+			jwtRest := jwt.New([]byte(cfg.Rest.Secret))
 			if tt.status != http.StatusUnauthorized {
-				signedCookie, err := server.CreateJWT(tt.userID)
+				signedCookie, err := jwtRest.Create(cookieKey, strconv.Itoa(int(tt.userID)))
 				assert.NoError(t, err)
 				userCookie := &http.Cookie{
 					Name:  "token",

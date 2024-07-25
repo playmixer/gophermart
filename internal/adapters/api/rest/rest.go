@@ -4,26 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/zap"
 
 	_ "github.com/playmixer/gophermart/docs"
+	"github.com/playmixer/gophermart/internal/adapters/store/errstore"
 	"github.com/playmixer/gophermart/internal/adapters/store/model"
+	"github.com/playmixer/gophermart/internal/core/gophermart"
+	"github.com/playmixer/gophermart/pkg/jwt"
 )
 
 var (
-	errInvalidAuthCookie = errors.New("invalid authorization cookie")
-
 	cookieName = "token"
+	cookieKey  = "UserID"
 )
 
-type Gophermart interface {
+type gophermartI interface {
 	Register(ctx context.Context, login, password string) error
 	Authorization(ctx context.Context, login, password string) (model.User, error)
 	UploadOrder(ctx context.Context, userID uint, orderNumber string) error
@@ -35,7 +37,8 @@ type Gophermart interface {
 
 type Server struct {
 	log     *zap.Logger
-	service Gophermart
+	engine  *gin.Engine
+	service gophermartI
 	address string
 	secret  []byte
 }
@@ -48,39 +51,37 @@ func Logger(log *zap.Logger) Option {
 	}
 }
 
-func Configure(cfg *Config) Option {
+func SetAddress(address string) Option {
 	return func(s *Server) {
-		if cfg != nil {
-			s.secret = []byte(cfg.Secret)
-			s.address = cfg.Address
-		}
+		s.address = address
 	}
 }
 
-func New(service Gophermart, options ...Option) (*Server, error) {
-	s := &Server{
-		log:     zap.NewNop(),
-		service: service,
+func SetSecretKey(key []byte) Option {
+	return func(s *Server) {
+		s.secret = key
 	}
-
-	for _, opt := range options {
-		opt(s)
-	}
-
-	return s, nil
 }
 
 //	@title			«Гофермарт»
 //	@version		1.0
 //	@description	Накопительная система лояльности «Гофермарт».
+//	@host			localhost:8080
+//	@BasePath		/
 
-//	@host		localhost:8080
-//	@BasePath	/
+func New(service gophermartI, options ...Option) (*Server, error) {
+	s := &Server{
+		log:     zap.NewNop(),
+		service: service,
+	}
 
-func (s *Server) CreateEngine() *gin.Engine {
-	r := gin.New()
-	r.Use(s.Logger())
-	apiUser := r.Group("/api/user")
+	s.engine = gin.New()
+	s.engine.Use(
+		s.Logger(),
+		s.GzipDecompress(),
+	)
+	apiUser := s.engine.Group("/api/user")
+	apiUser.Use(s.GzipCompress())
 	{
 		apiUser.POST("/register", s.handlerRegister)
 		apiUser.POST("/login", s.handlerLogin)
@@ -95,74 +96,48 @@ func (s *Server) CreateEngine() *gin.Engine {
 			authAPIUser.GET("/withdrawals", s.handlerUserWithdrawals)
 		}
 	}
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	s.engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	return r
+	for _, opt := range options {
+		opt(s)
+	}
+
+	return s, nil
+}
+
+func (s *Server) Engine() *gin.Engine {
+	return s.engine
 }
 
 func (s *Server) Run() error {
-	r := s.CreateEngine()
-	if err := r.Run(s.address); err != nil {
+	if err := s.engine.Run(s.address); err != nil {
 		return fmt.Errorf("server stopped with error: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Server) CreateJWT(userID uint) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"userID": strconv.Itoa(int(userID)),
-	})
-	tokenString, err := token.SignedString(s.secret)
-	if err != nil {
-		return "", fmt.Errorf("failed signe token: %w", err)
-	}
-
-	return tokenString, nil
-}
-
-func (s *Server) verifyJWT(signedData string) (string, bool) {
-	token, err := jwt.Parse(signedData, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unknown signing method: %v", token.Header["alg"])
-		}
-		return s.secret, nil
-	})
-
-	if err != nil {
-		s.log.Debug("failed parse jwt token", zap.Error(err))
-		return "", false
-	}
-
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		if uniqueID, ok := claims["userID"].(string); ok {
-			if uniqueID != "" {
-				return uniqueID, true
-			}
-		}
-	}
-
-	return "", false
-}
-
 func (s *Server) checkAuth(c *gin.Context) (userID uint, err error) {
 	var ok bool
 	var userIDS string
 	cookieUserID, err := c.Request.Cookie(cookieName)
-	if err == nil {
-		userIDS, ok = s.verifyJWT(cookieUserID.Value)
-	}
 	if err != nil {
-		return 0, fmt.Errorf("failed reade user cookie: %w %w", errInvalidAuthCookie, err)
+		return 0, fmt.Errorf("failed reade user cookie: %w %w", err, errUnauthorize)
 	}
+
+	jwtRest := jwt.New(s.secret)
+	userIDS, ok, err = jwtRest.Verify(cookieUserID.Value, cookieKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed verify token: %w %w", err, errUnauthorize)
+	}
+
 	if !ok {
-		return 0, fmt.Errorf("unverify usercookie: %w", errInvalidAuthCookie)
+		return 0, fmt.Errorf("unverify usercookie: %w", errUnauthorize)
 	}
+
 	userID64, err := strconv.ParseUint(userIDS, 10, 32)
 	if err != nil {
-		s.log.Error("can't convert string userID to uint", zap.Error(err))
-		c.Writer.WriteHeader(http.StatusInternalServerError)
-		return
+		return 0, fmt.Errorf("can't convert string userID to uint: %w", err)
 	}
 
 	return uint(userID64), nil
@@ -186,7 +161,8 @@ func (s *Server) authorization(c *gin.Context, login, password string) error {
 		return fmt.Errorf("failed authorization: %w", err)
 	}
 
-	signedCookie, err := s.CreateJWT(user.ID)
+	jwtRest := jwt.New(s.secret)
+	signedCookie, err := jwtRest.Create(cookieKey, strconv.Itoa(int(user.ID)))
 	if err != nil {
 		return fmt.Errorf("can't create cookie data: %w", err)
 	}
@@ -200,4 +176,38 @@ func (s *Server) authorization(c *gin.Context, login, password string) error {
 	http.SetCookie(c.Writer, userCookie)
 
 	return nil
+}
+
+func (s *Server) login(c *gin.Context, login, password string) (int, string) {
+	if err := s.authorization(c, login, password); err != nil {
+		if errors.Is(err, gophermart.ErrLoginNotValid) || errors.Is(err, gophermart.ErrPasswordNotValid) {
+			if errors.Is(err, gophermart.ErrLoginNotValid) {
+				return http.StatusBadRequest, "Не верный формат логина"
+			}
+			if errors.Is(err, gophermart.ErrPasswordNotValid) {
+				return http.StatusBadRequest, "Не верный формат пароля"
+			}
+			return http.StatusInternalServerError, ""
+		}
+		if errors.Is(err, gophermart.ErrPasswordNotEquale) || errors.Is(err, errstore.ErrNotFoundData) {
+			return http.StatusUnauthorized, ""
+		}
+		s.log.Error("authorization failed", zap.Error(err))
+		return http.StatusInternalServerError, ""
+	}
+	return http.StatusOK, ""
+}
+
+func (s *Server) readBody(c *gin.Context) ([]byte, int) {
+	bBody, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		s.log.Error("failed read body", zap.Error(err))
+		return []byte{}, http.StatusInternalServerError
+	}
+	defer func() {
+		if err := c.Request.Body.Close(); err != nil {
+			s.log.Error(msgErrorCloseBody, zap.Error(err))
+		}
+	}()
+	return bBody, 0
 }
