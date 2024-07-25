@@ -24,30 +24,30 @@ const (
 type Order struct {
 	CreatedAt time.Time   `gorm:"type:time"`
 	UpdatedAt time.Time   `gorm:"type:time"`
-	Number    string      `gorm:"unique"`
+	Number    string      `gorm:"unique,index"`
 	Status    OrderStatus `gorm:"default:NEW"`
-	User      User        `gorm:"embedded"`
-	ID        uint        `gorm:"primarykey"`
-	UserID    uint        `gorm:"index"`
-	Accrual   float32     `gorm:"type:float"`
+	User      User
+	ID        uint    `gorm:"primarykey"`
+	UserID    uint    `gorm:"index"`
+	Accrual   float32 `gorm:"type:float"`
 }
 
 type Balance struct {
 	CreatedAt time.Time `gorm:"type:time"`
 	UpdatedAt time.Time `gorm:"type:time"`
-	User      User      `gorm:"embedded"`
-	ID        uint      `gorm:"primarykey"`
-	UserID    uint      `gorm:"unique"`
-	Current   float32   `gorm:"type:float"`
-	Withdrawn float32   `gorm:"type:float"`
+	User      User
+	ID        uint    `gorm:"primarykey"`
+	UserID    uint    `gorm:"unique"`
+	Current   float32 `gorm:"type:float"`
+	Withdrawn float32 `gorm:"type:float"`
 }
 
 type WithdrawBalance struct {
 	CreatedAt  time.Time `gorm:"type:time"`
 	UpdatedAt  time.Time `gorm:"type:time"`
 	OderNumber string    `gorm:"type:string"`
-	Balance    Balance   `gorm:"embedded"`
-	ID         uint      `gorm:"primarykey"`
-	BalanceID  uint      `gorm:"index"`
-	Sum        float32   `gorm:"type:float"`
+	Balance    Balance
+	ID         uint    `gorm:"primarykey"`
+	BalanceID  uint    `gorm:"index"`
+	Sum        float32 `gorm:"type:float"`
 }
