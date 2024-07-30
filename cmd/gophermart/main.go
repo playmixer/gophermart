@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/playmixer/gophermart/internal/adapters/api/rest"
 	"github.com/playmixer/gophermart/internal/adapters/logger"
@@ -18,6 +19,10 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	shutdownDelay = time.Second * 2
+)
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -25,7 +30,7 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	cfg, err := config.Init()
@@ -55,21 +60,32 @@ func run() error {
 		return fmt.Errorf("failed initialize rest server: %w", err)
 	}
 
-	exit := make(chan os.Signal, 1)
-	signal.Notify(exit, os.Interrupt, syscall.SIGTERM)
-
 	lgr.Info("Starting")
 	go func() {
-		defer close(exit)
 		if err := server.Run(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			lgr.Error("failed run server", zap.Error(err))
 		}
 	}()
 
-	<-exit
+	<-ctx.Done()
 	lgr.Info("Stopping...")
-	cancel()
+	ctxShutdown, stop := context.WithTimeout(context.Background(), shutdownDelay)
+	defer stop()
+
+	// выключаем http сервер
+	if err := server.Shutdown(ctxShutdown); err != nil {
+		lgr.Error("Server Shutdown with error", zap.Error(err))
+	}
+
+	// ждем завершения горутин
 	mart.Wait()
+
+	// закрываем соединение с БД
+	if err := storage.CloseDB(); err != nil {
+		lgr.Error("Close Database with error", zap.Error(err))
+	}
+
+	<-ctxShutdown.Done()
 	lgr.Info("Service stopped")
 
 	return nil

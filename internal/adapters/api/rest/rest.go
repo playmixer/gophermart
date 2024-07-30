@@ -36,10 +36,9 @@ type gophermartI interface {
 }
 
 type Server struct {
+	srv     *http.Server
 	log     *zap.Logger
-	engine  *gin.Engine
 	service gophermartI
-	address string
 	secret  []byte
 }
 
@@ -53,7 +52,7 @@ func Logger(log *zap.Logger) Option {
 
 func SetAddress(address string) Option {
 	return func(s *Server) {
-		s.address = address
+		s.srv.Addr = address
 	}
 }
 
@@ -71,16 +70,17 @@ func SetSecretKey(key []byte) Option {
 
 func New(service gophermartI, options ...Option) (*Server, error) {
 	s := &Server{
+		srv:     &http.Server{},
 		log:     zap.NewNop(),
 		service: service,
 	}
 
-	s.engine = gin.New()
-	s.engine.Use(
+	r := gin.New()
+	r.Use(
 		s.Logger(),
 		s.GzipDecompress(),
 	)
-	apiUser := s.engine.Group("/api/user")
+	apiUser := r.Group("/api/user")
 	apiUser.Use(s.GzipCompress())
 	{
 		apiUser.POST("/register", s.handlerRegister)
@@ -96,24 +96,32 @@ func New(service gophermartI, options ...Option) (*Server, error) {
 			authAPIUser.GET("/withdrawals", s.handlerUserWithdrawals)
 		}
 	}
-	s.engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	for _, opt := range options {
 		opt(s)
 	}
+	s.srv.Handler = r.Handler()
 
 	return s, nil
 }
 
-func (s *Server) Engine() *gin.Engine {
-	return s.engine
+func (s *Server) Engine() http.Handler {
+	return s.srv.Handler
 }
 
 func (s *Server) Run() error {
-	if err := s.engine.Run(s.address); err != nil {
+	if err := s.srv.ListenAndServe(); err != nil {
 		return fmt.Errorf("server stopped with error: %w", err)
 	}
 
+	return nil
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	if err := s.srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("failed shutfdown servr: %w", err)
+	}
 	return nil
 }
 

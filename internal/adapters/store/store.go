@@ -23,6 +23,7 @@ type Store interface {
 	GetWithdrawalsFromBalance(ctx context.Context, balanceID uint) ([]*model.WithdrawBalance, error)
 	GetOrdersNotPrecessed(ctx context.Context) ([]*model.Order, error)
 	AddAccrual(ctx context.Context, order *model.Order) error
+	CloseDB() error
 }
 
 func New(ctx context.Context, cfg *Config, log *zap.Logger) (Store, error) {

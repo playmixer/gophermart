@@ -59,6 +59,18 @@ func New(ctx context.Context, cfg *Config, options ...option) (*Store, error) {
 	return s, nil
 }
 
+func (s *Store) CloseDB() error {
+	db, err := s.db.DB()
+	if err != nil {
+		return fmt.Errorf("failed getting database connection: %w", err)
+	}
+	if err := db.Close(); err != nil {
+		return fmt.Errorf("failed close database connection: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Store) RegisterUser(ctx context.Context, login, hashPassword string) error {
 	user := model.User{
 		Login:        login,
