@@ -239,61 +239,63 @@ func (g *Gophermart) workerUpdOrders(ctx context.Context, inputCh <-chan *model.
 			g.log.Info("worker updating order stopping")
 			return
 		case o := <-inputCh:
-			request := func() (int64, error) {
-				resp, err := http.Get(g.cfg.AccrualAddress + "/api/orders/" + o.Number)
-				if err != nil {
-					return delayErrorRequest, fmt.Errorf("request failed from accrual service: %w", err)
-				}
-				defer func() { _ = resp.Body.Close() }()
-				bBody, err := io.ReadAll(resp.Body)
-				if err != nil {
-					return delayErrorRequest, fmt.Errorf("failed to read response body: %w", err)
-				}
-				if resp.StatusCode == http.StatusOK {
-					jBody := tOrderAccrualBody{}
-					err = json.Unmarshal(bBody, &jBody)
-					if err != nil {
-						return delayErrorRequest, fmt.Errorf("failed unmarshal accrual response body: %w", err)
-					}
-					order := o
-					order.Accrual = jBody.Accrual
-					order.Status = model.OrderStatus(jBody.Status)
-					err = g.store.AddAccrual(ctx, order)
-					if err != nil {
-						return delayErrorRequest, fmt.Errorf("failed add accrual: %w", err)
-					}
-					return delayErrorRequest, nil
-				}
-				if resp.StatusCode == http.StatusNoContent {
-					g.log.Debug("no content by order", zap.String("number", o.Number))
-					return 0, nil
-				}
-				if resp.StatusCode == http.StatusTooManyRequests {
-					sRetryAfter := resp.Header.Get("Retry-After")
-					g.log.Debug("too many requests",
-						zap.String("status", resp.Status),
-						zap.String("Retry-After", sRetryAfter),
-					)
-					iRetryAfter, err := strconv.Atoi(sRetryAfter)
-					if err != nil {
-						return delayErrorRequest, fmt.Errorf("failed convert RetryAfter to int: %w", err)
-					}
-					if iRetryAfter <= 0 {
-						return delayErrorRequest, fmt.Errorf("`RetryAfter` not valid as seconds: %d", iRetryAfter)
-					}
-					return int64(iRetryAfter), nil
-				}
-				g.log.Info("not correct response",
-					zap.String("status", resp.Status),
-					zap.String("order", o.Number),
-					zap.String("body", string(bBody)),
-				)
-				return 0, nil
-			}
-			if err := cb.execute(request); err != nil {
+			if err := cb.execute(g.requestToAccrual(ctx, o)); err != nil {
 				g.log.Error("circuit braker failed execute", zap.Error(err))
 			}
 		}
+	}
+}
+
+func (g *Gophermart) requestToAccrual(ctx context.Context, order *model.Order) func() (int64, error) {
+	return func() (int64, error) {
+		resp, err := http.Get(g.cfg.AccrualAddress + "/api/orders/" + order.Number)
+		if err != nil {
+			return delayErrorRequest, fmt.Errorf("request failed from accrual service: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		bBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return delayErrorRequest, fmt.Errorf("failed to read response body: %w", err)
+		}
+		if resp.StatusCode == http.StatusOK {
+			jBody := tOrderAccrualBody{}
+			err = json.Unmarshal(bBody, &jBody)
+			if err != nil {
+				return delayErrorRequest, fmt.Errorf("failed unmarshal accrual response body: %w", err)
+			}
+			order.Accrual = jBody.Accrual
+			order.Status = model.OrderStatus(jBody.Status)
+			err = g.store.AddAccrual(ctx, order)
+			if err != nil {
+				return delayErrorRequest, fmt.Errorf("failed add accrual: %w", err)
+			}
+			return delayErrorRequest, nil
+		}
+		if resp.StatusCode == http.StatusNoContent {
+			g.log.Debug("no content by order", zap.String("number", order.Number))
+			return 0, nil
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			sRetryAfter := resp.Header.Get("Retry-After")
+			g.log.Debug("too many requests",
+				zap.String("status", resp.Status),
+				zap.String("Retry-After", sRetryAfter),
+			)
+			iRetryAfter, err := strconv.Atoi(sRetryAfter)
+			if err != nil {
+				return delayErrorRequest, fmt.Errorf("failed convert RetryAfter to int: %w", err)
+			}
+			if iRetryAfter <= 0 {
+				return delayErrorRequest, fmt.Errorf("`RetryAfter` not valid as seconds: %d", iRetryAfter)
+			}
+			return int64(iRetryAfter), nil
+		}
+		g.log.Info("not correct response",
+			zap.String("status", resp.Status),
+			zap.String("order", order.Number),
+			zap.String("body", string(bBody)),
+		)
+		return 0, nil
 	}
 }
 
