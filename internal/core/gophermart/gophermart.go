@@ -27,8 +27,8 @@ type Store interface {
 }
 
 var (
-	workerCount     = 5
-	delayUpdAccrual = time.Second * 10
+	delayUpdAccrual         = time.Second * 10
+	delayErrorRequest int64 = 2
 )
 
 type Config struct {
@@ -70,13 +70,10 @@ func New(ctx context.Context, cfg *Config, store Store, options ...option) *Goph
 	}
 
 	if g.cfg.GorutineEnabled {
-		semaphore := NewSemaphore()
 		g.wg.Add(1)
 		outputCh := g.generatorUpdAccrual(ctx)
-		for i := range workerCount {
-			g.wg.Add(1)
-			go g.workerUpdOrders(ctx, i, outputCh, semaphore)
-		}
+		g.wg.Add(1)
+		go g.workerUpdOrders(ctx, outputCh)
 	}
 
 	return g
@@ -231,49 +228,45 @@ func (g *Gophermart) generatorUpdAccrual(ctx context.Context) <-chan *model.Orde
 	return outpuCh
 }
 
-func (g *Gophermart) workerUpdOrders(ctx context.Context, id int, inputCh <-chan *model.Order, semaphore *semaphore) {
-	g.log.Debug("start gorutin workerUpdOrders", zap.Int("id", id))
-	defer g.log.Debug("stopped gorutin workerUpdOrders", zap.Int("id", id))
+func (g *Gophermart) workerUpdOrders(ctx context.Context, inputCh <-chan *model.Order) {
+	g.log.Debug("start gorutin workerUpdOrders")
+	defer g.log.Debug("stopped gorutin workerUpdOrders")
 	defer g.wg.Done()
+	cb := newCircuitBreaker()
 	for {
 		select {
 		case <-ctx.Done():
-			g.log.Info("worker updating order stopping", zap.Int("id", id))
+			g.log.Info("worker updating order stopping")
 			return
 		case o := <-inputCh:
-			semaphore.Wait()
-			func() {
+			request := func() (int64, error) {
 				resp, err := http.Get(g.cfg.AccrualAddress + "/api/orders/" + o.Number)
 				if err != nil {
-					g.log.Error("request failed from accrual service", zap.String("orderNumber", o.Number))
-					return
+					return delayErrorRequest, fmt.Errorf("request failed from accrual service: %w", err)
 				}
 				defer func() { _ = resp.Body.Close() }()
 				bBody, err := io.ReadAll(resp.Body)
 				if err != nil {
-					g.log.Error("failed to read response body", zap.String("body", string(bBody)), zap.String("orderNumber", o.Number))
-					return
+					return delayErrorRequest, fmt.Errorf("failed to read response body: %w", err)
 				}
 				if resp.StatusCode == http.StatusOK {
 					jBody := tOrderAccrualBody{}
 					err = json.Unmarshal(bBody, &jBody)
 					if err != nil {
-						g.log.Error("failed unmarshal accrual response body", zap.Error(err))
-						return
+						return delayErrorRequest, fmt.Errorf("failed unmarshal accrual response body: %w", err)
 					}
 					order := o
 					order.Accrual = jBody.Accrual
 					order.Status = model.OrderStatus(jBody.Status)
 					err = g.store.AddAccrual(ctx, order)
 					if err != nil {
-						g.log.Error("failed add accrual", zap.Error(err))
-						return
+						return delayErrorRequest, fmt.Errorf("failed add accrual: %w", err)
 					}
-					return
+					return delayErrorRequest, nil
 				}
 				if resp.StatusCode == http.StatusNoContent {
-					g.log.Debug("no content", zap.String("order", o.Number))
-					return
+					g.log.Debug("no content by order", zap.String("number", o.Number))
+					return 0, nil
 				}
 				if resp.StatusCode == http.StatusTooManyRequests {
 					sRetryAfter := resp.Header.Get("Retry-After")
@@ -283,22 +276,23 @@ func (g *Gophermart) workerUpdOrders(ctx context.Context, id int, inputCh <-chan
 					)
 					iRetryAfter, err := strconv.Atoi(sRetryAfter)
 					if err != nil {
-						g.log.Error("failed convert RetryAfter to int", zap.Error(err))
-						return
+						return delayErrorRequest, fmt.Errorf("failed convert RetryAfter to int: %w", err)
 					}
 					if iRetryAfter <= 0 {
-						g.log.Error("`RetryAfter` not valid as seconds", zap.Int("seconds", iRetryAfter))
-						return
+						return delayErrorRequest, fmt.Errorf("`RetryAfter` not valid as seconds: %d", iRetryAfter)
 					}
-					semaphore.Lock(time.Second * time.Duration(iRetryAfter))
-					return
+					return int64(iRetryAfter), nil
 				}
 				g.log.Info("not correct response",
 					zap.String("status", resp.Status),
 					zap.String("order", o.Number),
 					zap.String("body", string(bBody)),
 				)
-			}()
+				return 0, nil
+			}
+			if err := cb.execute(request); err != nil {
+				g.log.Error("circuit braker failed execute", zap.Error(err))
+			}
 		}
 	}
 }

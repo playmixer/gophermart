@@ -1,8 +1,11 @@
 package gophermart
 
 import (
-	"sync/atomic"
+	"fmt"
+	"sync"
 	"time"
+
+	"errors"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -32,29 +35,68 @@ func checkPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-type semaphore struct {
-	lockedTime *atomic.Int64
+type circuitBreakerState int
+
+const (
+	cbOpen circuitBreakerState = iota
+	cbClose
+	cbHalfOpen
+)
+
+type circuitBreaker struct {
+	mu          *sync.Mutex
+	expireDelay int64
+	state       circuitBreakerState
 }
 
-func NewSemaphore() *semaphore {
-	s := &semaphore{
-		lockedTime: &atomic.Int64{},
+func newCircuitBreaker() *circuitBreaker {
+	cb := &circuitBreaker{
+		mu:          &sync.Mutex{},
+		expireDelay: 0,
+		state:       cbClose,
 	}
-	s.lockedTime.Store(time.Now().UnixNano())
 
-	return s
+	return cb
 }
 
-func (s *semaphore) Wait() {
-	var delay int64 = 100
-	for {
-		if s.lockedTime.Load() < time.Now().UnixNano() {
-			return
+func (cb *circuitBreaker) execute(request func() (int64, error)) error {
+	cb.mu.Lock()
+	switch cb.state {
+	case cbOpen:
+		current := time.Now().Unix()
+		if current > cb.expireDelay {
+			cb.state = cbHalfOpen
+		} else {
+			cb.mu.Unlock()
+			return errors.New("service unavailabale")
 		}
-		time.Sleep(time.Millisecond * time.Duration(delay))
+	case cbHalfOpen:
+		cb.state = cbOpen
+	default:
 	}
-}
+	cb.mu.Unlock()
 
-func (s *semaphore) Lock(d time.Duration) {
-	s.lockedTime.Store(time.Now().Add(d).UnixNano())
+	delay, err := request()
+
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	timeDelay := time.Duration(delay) * time.Second
+	if timeDelay > 0 {
+		cb.expireDelay = time.Now().Add(timeDelay).Unix()
+	}
+	if err != nil {
+		cb.state = cbOpen
+		time.Sleep(timeDelay)
+		return fmt.Errorf("request error: %w", err)
+	}
+
+	if timeDelay > 0 {
+		cb.state = cbOpen
+		time.Sleep(timeDelay)
+		return nil
+	}
+
+	cb.state = cbClose
+	return nil
 }
