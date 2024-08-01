@@ -1,0 +1,53 @@
+version: '3'
+
+services:
+  database:
+    container_name: database
+    image: postgres
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: gophermart
+      PGDATA: /data/postgres
+    volumes:
+      - ./data/postgres:/data/postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - backend
+
+  accrual:
+    build: 
+      context: ./..
+      dockerfile: ./deploy/accrual/Dockerfile
+    container_name: accrual
+    ports:
+      - "8081:8080"
+    environment:
+      - DATABASE_URI=postgres://root:root@database:5432/accrual?sslmode=disable
+    networks:
+      - backend
+
+  gophermart:
+    build: 
+      context: ./..
+      dockerfile: ./deploy/gophermart/Dockerfile
+    container_name: gophermart
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URI=postgres://root:root@database:5432/gophermart?sslmode=disable
+      - ACCRUAL_SYSTEM_ADDRESS=http://accrual:8080
+      - SECRET_KEY=secret_key_phrase
+      - LOG_LEVEL=debug
+    volumes:
+      - ./data/logs:/app/logs
+    depends_on:
+      - database
+    restart: always
+    networks:
+      - backend
+
+networks:
+  backend:

@@ -1,0 +1,210 @@
+basePath: /
+definitions:
+  rest.tAuthorization:
+    properties:
+      login:
+        type: string
+      password:
+        type: string
+    type: object
+  rest.tRegistration:
+    properties:
+      login:
+        type: string
+      password:
+        type: string
+    type: object
+  rest.tWithdraw:
+    properties:
+      order:
+        type: string
+      sum:
+        type: number
+    type: object
+  rest.tWithdrawBalance:
+    properties:
+      order:
+        type: string
+      processed_at:
+        type: string
+      sum:
+        type: number
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Накопительная система лояльности «Гофермарт».
+  title: «Гофермарт»
+  version: "1.0"
+paths:
+  /api/user/balance:
+    get:
+      consumes:
+      - text/plain
+      description: get user balance
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: успешная обработка запроса
+        "401":
+          description: пользователь не авторизован
+        "500":
+          description: внутренняя ошибка сервера
+      summary: User balance
+      tags:
+      - balance
+  /api/user/balance/withdraw:
+    post:
+      consumes:
+      - application/json
+      description: Withdraw from user balans
+      parameters:
+      - description: withdraw
+        in: body
+        name: withdraw
+        required: true
+        schema:
+          $ref: '#/definitions/rest.tWithdraw'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: успешная обработка запроса
+        "401":
+          description: пользователь не авторизован
+        "402":
+          description: на счету недостаточно средств
+        "422":
+          description: неверный номер заказа
+        "500":
+          description: внутренняя ошибка сервера
+      summary: Withdraw from user balans
+      tags:
+      - balance
+  /api/user/login:
+    post:
+      consumes:
+      - application/json
+      description: authorization
+      parameters:
+      - description: auth
+        in: body
+        name: auth
+        required: true
+        schema:
+          $ref: '#/definitions/rest.tAuthorization'
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: пользователь успешно аутентифицирован
+        "400":
+          description: неверный формат запроса
+        "401":
+          description: неверная пара логин/пароль
+        "500":
+          description: внутренняя ошибка сервера
+      summary: Login user
+      tags:
+      - auth
+  /api/user/orders:
+    get:
+      consumes:
+      - text/plain
+      description: get user orders
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: успешная обработка запроса
+        "204":
+          description: нет данных для ответа
+        "401":
+          description: пользователь не авторизован
+        "500":
+          description: внутренняя ошибка сервера
+      summary: List user orders
+      tags:
+      - order
+    post:
+      consumes:
+      - text/plain
+      description: upload order
+      parameters:
+      - description: order_id
+        in: body
+        name: order_id
+        required: true
+        schema:
+          type: integer
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: номер заказа уже был загружен этим пользователем
+        "202":
+          description: новый номер заказа принят в обработку
+        "400":
+          description: неверный формат запроса
+        "401":
+          description: пользователь не авторизован
+        "409":
+          description: номер заказа уже был загружен другим пользователем
+        "422":
+          description: неверный формат номера заказа
+        "500":
+          description: внутренняя ошибка сервера
+      summary: upload user order
+      tags:
+      - order
+  /api/user/register:
+    post:
+      consumes:
+      - application/json
+      description: registration user
+      parameters:
+      - description: registration
+        in: body
+        name: registration
+        required: true
+        schema:
+          $ref: '#/definitions/rest.tRegistration'
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: пользователь успешно зарегистрирован и аутентифицирован
+        "400":
+          description: неверный формат запроса
+        "409":
+          description: логин уже занят
+        "500":
+          description: внутренняя ошибка сервера
+      summary: Register user
+      tags:
+      - auth
+  /api/user/withdrawals:
+    get:
+      consumes:
+      - text/plain
+      description: Withdraw from user balans
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: успешная обработка запроса
+          schema:
+            items:
+              $ref: '#/definitions/rest.tWithdrawBalance'
+            type: array
+        "204":
+          description: нет ни одного списания
+        "401":
+          description: пользователь не авторизован
+        "500":
+          description: внутренняя ошибка сервера
+      summary: Withdraw from user balans
+      tags:
+      - balance
+swagger: "2.0"

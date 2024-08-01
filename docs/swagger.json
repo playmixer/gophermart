@@ -1,0 +1,322 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Накопительная система лояльности «Гофермарт».",
+        "title": "«Гофермарт»",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/api/user/balance": {
+            "get": {
+                "description": "get user balance",
+                "consumes": [
+                    "text/plain"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "balance"
+                ],
+                "summary": "User balance",
+                "responses": {
+                    "200": {
+                        "description": "успешная обработка запроса"
+                    },
+                    "401": {
+                        "description": "пользователь не авторизован"
+                    },
+                    "500": {
+                        "description": "внутренняя ошибка сервера"
+                    }
+                }
+            }
+        },
+        "/api/user/balance/withdraw": {
+            "post": {
+                "description": "Withdraw from user balans",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "balance"
+                ],
+                "summary": "Withdraw from user balans",
+                "parameters": [
+                    {
+                        "description": "withdraw",
+                        "name": "withdraw",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.tWithdraw"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "успешная обработка запроса"
+                    },
+                    "401": {
+                        "description": "пользователь не авторизован"
+                    },
+                    "402": {
+                        "description": "на счету недостаточно средств"
+                    },
+                    "422": {
+                        "description": "неверный номер заказа"
+                    },
+                    "500": {
+                        "description": "внутренняя ошибка сервера"
+                    }
+                }
+            }
+        },
+        "/api/user/login": {
+            "post": {
+                "description": "authorization",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Login user",
+                "parameters": [
+                    {
+                        "description": "auth",
+                        "name": "auth",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.tAuthorization"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "пользователь успешно аутентифицирован"
+                    },
+                    "400": {
+                        "description": "неверный формат запроса"
+                    },
+                    "401": {
+                        "description": "неверная пара логин/пароль"
+                    },
+                    "500": {
+                        "description": "внутренняя ошибка сервера"
+                    }
+                }
+            }
+        },
+        "/api/user/orders": {
+            "get": {
+                "description": "get user orders",
+                "consumes": [
+                    "text/plain"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "order"
+                ],
+                "summary": "List user orders",
+                "responses": {
+                    "200": {
+                        "description": "успешная обработка запроса"
+                    },
+                    "204": {
+                        "description": "нет данных для ответа"
+                    },
+                    "401": {
+                        "description": "пользователь не авторизован"
+                    },
+                    "500": {
+                        "description": "внутренняя ошибка сервера"
+                    }
+                }
+            },
+            "post": {
+                "description": "upload order",
+                "consumes": [
+                    "text/plain"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "order"
+                ],
+                "summary": "upload user order",
+                "parameters": [
+                    {
+                        "description": "order_id",
+                        "name": "order_id",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "номер заказа уже был загружен этим пользователем"
+                    },
+                    "202": {
+                        "description": "новый номер заказа принят в обработку"
+                    },
+                    "400": {
+                        "description": "неверный формат запроса"
+                    },
+                    "401": {
+                        "description": "пользователь не авторизован"
+                    },
+                    "409": {
+                        "description": "номер заказа уже был загружен другим пользователем"
+                    },
+                    "422": {
+                        "description": "неверный формат номера заказа"
+                    },
+                    "500": {
+                        "description": "внутренняя ошибка сервера"
+                    }
+                }
+            }
+        },
+        "/api/user/register": {
+            "post": {
+                "description": "registration user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Register user",
+                "parameters": [
+                    {
+                        "description": "registration",
+                        "name": "registration",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.tRegistration"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "пользователь успешно зарегистрирован и аутентифицирован"
+                    },
+                    "400": {
+                        "description": "неверный формат запроса"
+                    },
+                    "409": {
+                        "description": "логин уже занят"
+                    },
+                    "500": {
+                        "description": "внутренняя ошибка сервера"
+                    }
+                }
+            }
+        },
+        "/api/user/withdrawals": {
+            "get": {
+                "description": "Withdraw from user balans",
+                "consumes": [
+                    "text/plain"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "balance"
+                ],
+                "summary": "Withdraw from user balans",
+                "responses": {
+                    "200": {
+                        "description": "успешная обработка запроса",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/rest.tWithdrawBalance"
+                            }
+                        }
+                    },
+                    "204": {
+                        "description": "нет ни одного списания"
+                    },
+                    "401": {
+                        "description": "пользователь не авторизован"
+                    },
+                    "500": {
+                        "description": "внутренняя ошибка сервера"
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "rest.tAuthorization": {
+            "type": "object",
+            "properties": {
+                "login": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.tRegistration": {
+            "type": "object",
+            "properties": {
+                "login": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.tWithdraw": {
+            "type": "object",
+            "properties": {
+                "order": {
+                    "type": "string"
+                },
+                "sum": {
+                    "type": "number"
+                }
+            }
+        },
+        "rest.tWithdrawBalance": {
+            "type": "object",
+            "properties": {
+                "order": {
+                    "type": "string"
+                },
+                "processed_at": {
+                    "type": "string"
+                },
+                "sum": {
+                    "type": "number"
+                }
+            }
+        }
+    }
+}
